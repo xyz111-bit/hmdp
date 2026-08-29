@@ -74,8 +74,8 @@ public class UserController {
             return Result.fail("用户为空");
         }
         BeanUtils.copyProperties(user, user1);
-
-        return Result.ok(user1);
+        log.info("\nme{}",user);
+        return Result.ok(user);
     }
 
     @GetMapping("/info/{id}")
