@@ -1,6 +1,7 @@
 package com.hmdp.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.hmdp.dto.Result;
@@ -33,7 +34,10 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
     @Override
     public Result queryById(Long id) {
-        //从redis查询商品
+       // Shop shop = penetration(id);
+
+        Shop shop=querryWithBreakdown(id);
+     /*   //从redis查询商品
         String shopStr = stringRedisTemplate.opsForValue().get(RedisConstants.CACHE_SHOP_KEY+id);
 
         //如果查到返回
@@ -57,12 +61,124 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY +id,jsonStr);
         stringRedisTemplate.expire(RedisConstants.CACHE_SHOP_KEY +id,RedisConstants.CACHE_SHOP_TTL, TimeUnit.MINUTES);
         //返回数据
-
-
-
-
+*/
+        if(shop==null){
+            return Result.fail("没有查询到店铺");
+        }
         return Result.ok(shop);
+    }
+
+
+    private Shop penetration(Long id){
+
+        //从redis查询商品
+        String shopStr = stringRedisTemplate.opsForValue().get(RedisConstants.CACHE_SHOP_KEY+id);
+
+        //如果查到返回
+        if(StrUtil.isNotBlank(shopStr)){
+            return JSONUtil.toBean(shopStr,Shop.class);
+        }
+        if(shopStr!=null){
+            return null;
+        }
+
+        //从数据库查询商品
+        Shop shop = getById(id);
+        //如果没有查到 返回错误
+        if(shop==null){
+            stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY+id,"",3L,TimeUnit.MINUTES);
+            return null;
+        }
+
+        //如果查到,写入redis
+        String jsonStr = JSONUtil.toJsonStr(shop);
+        stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY +id,jsonStr);
+        stringRedisTemplate.expire(RedisConstants.CACHE_SHOP_KEY +id,RedisConstants.CACHE_SHOP_TTL, TimeUnit.MINUTES);
+        //返回数据
+        return shop;
 
 
     }
+
+    private Shop querryWithBreakdown(Long id){
+        //从redis查询商品
+        String shopStr = stringRedisTemplate.opsForValue().get(RedisConstants.CACHE_SHOP_KEY+id);
+
+        //如果查到返回
+        if(StrUtil.isNotBlank(shopStr)){
+            return JSONUtil.toBean(shopStr,Shop.class);
+        }
+        if(shopStr!=null){
+            return null;
+        }
+        String lockKey=RedisConstants.LOCK_SHOP_KEY+id;
+        boolean flag = trylock(lockKey);
+        Shop shop = null;
+        try {
+
+            if(!flag){
+                Thread.sleep(200);
+                return querryWithBreakdown(id);
+            }
+
+            //从redis查询商品
+            shopStr = stringRedisTemplate.opsForValue().get(RedisConstants.CACHE_SHOP_KEY+id);
+
+            if(StrUtil.isNotBlank(shopStr)){
+                return JSONUtil.toBean(shopStr,Shop.class);
+            }
+            if(shopStr!=null){
+                return null;
+            }
+
+            //从数据库查询商品
+            Thread.sleep(300);
+            shop = getById(id);
+            //如果没有查到 返回错误
+            if(shop==null){
+                stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY+id,"",3L,TimeUnit.MINUTES);
+                return null;
+            }
+
+            //如果查到,写入redis
+            String jsonStr = JSONUtil.toJsonStr(shop);
+            stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY +id,jsonStr);
+            stringRedisTemplate.expire(RedisConstants.CACHE_SHOP_KEY +id,RedisConstants.CACHE_SHOP_TTL, TimeUnit.MINUTES);
+            //返回数据
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } finally {
+            if(flag)
+                dellock(lockKey);
+        }
+
+
+
+        return shop;
+    }
+
+    private boolean trylock(String key){
+        String value="1";
+        long timeout=20;
+        TimeUnit timeUnit=TimeUnit.SECONDS;
+        Boolean ifAbsent = stringRedisTemplate.opsForValue().setIfAbsent(key, value, timeout, timeUnit);
+
+        return BooleanUtil.isTrue(ifAbsent);
+    }
+
+    private void dellock(String key){
+        stringRedisTemplate.delete(key);
+    }
+
+
+
+
+
+
+
+
+
+
+
+
 }
