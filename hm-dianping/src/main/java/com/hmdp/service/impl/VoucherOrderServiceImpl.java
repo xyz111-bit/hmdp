@@ -8,9 +8,11 @@ import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
+import com.hmdp.utils.RedisLock;
 import com.hmdp.utils.UserHolder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +36,10 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Autowired
     @Lazy
     private IVoucherOrderService voucherOrderService;
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
+
+
 
     @Override
     public Result seckillVoucher(Long voucherId) {
@@ -47,13 +53,20 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         if(voucher.getStock()<=0){
             return Result.fail("优惠券没有剩余");
         }
-
         Long userId = UserHolder.getUser().getId();
-        synchronized (userId.toString().intern()) {
-            //返回订单id
-            return voucherOrderService.createVoucherOrder(userId,voucherId);
-
+        RedisLock redisLock=new RedisLock("voucherOrderCreate:"+userId,stringRedisTemplate);
+        //synchronized (userId.toString().intern()) {
+        boolean lock = redisLock.trylock(100L);
+        if(!lock){
+            return Result.fail("线程没有获取到锁");
         }
+        try {
+            //返回订单id
+            return voucherOrderService.createVoucherOrder(userId, voucherId);
+        }finally {
+            redisLock.unlock();
+        }
+        //}
     }
 
     @Transactional
