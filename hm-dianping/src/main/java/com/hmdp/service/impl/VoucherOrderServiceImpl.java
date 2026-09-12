@@ -64,7 +64,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             //返回订单id
             return voucherOrderService.createVoucherOrder(userId, voucherId);
         }finally {
-            redisLock.unlock();
+
+                redisLock.unlock();
+
         }
         //}
     }
