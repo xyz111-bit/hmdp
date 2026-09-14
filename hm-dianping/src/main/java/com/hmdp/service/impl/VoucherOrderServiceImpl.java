@@ -8,8 +8,9 @@ import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
-import com.hmdp.utils.RedisLock;
 import com.hmdp.utils.UserHolder;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.concurrent.TimeUnit;
 
 /**
  * <p>
@@ -38,11 +40,12 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private IVoucherOrderService voucherOrderService;
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
-
+    @Autowired
+    private RedissonClient redissonClient;
 
 
     @Override
-    public Result seckillVoucher(Long voucherId) {
+    public Result seckillVoucher(Long voucherId) throws InterruptedException {
         //查询优惠券信息
         SeckillVoucher voucher = seckillVoucherService.query().eq("voucher_id", voucherId).one();
         //检查优惠券是否在时间内
@@ -54,9 +57,11 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("优惠券没有剩余");
         }
         Long userId = UserHolder.getUser().getId();
-        RedisLock redisLock=new RedisLock("voucherOrderCreate:"+userId,stringRedisTemplate);
+        RLock rLock = redissonClient.getLock("voucherOrderCreate:" + userId);
+        //RedisLock redisLock=new RedisLock("voucherOrderCreate:"+userId,stringRedisTemplate);
         //synchronized (userId.toString().intern()) {
-        boolean lock = redisLock.trylock(100L);
+        boolean lock = rLock.tryLock(1, 100, TimeUnit.SECONDS);
+        //boolean lock = redisLock.trylock(100L);
         if(!lock){
             return Result.fail("线程没有获取到锁");
         }
@@ -64,8 +69,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             //返回订单id
             return voucherOrderService.createVoucherOrder(userId, voucherId);
         }finally {
-
-                redisLock.unlock();
+                rLock.unlock();
+               // redisLock.unlock();
 
         }
         //}
