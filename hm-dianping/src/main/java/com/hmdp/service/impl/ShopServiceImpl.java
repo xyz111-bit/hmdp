@@ -4,6 +4,7 @@ import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
 import com.hmdp.mapper.ShopMapper;
@@ -11,12 +12,20 @@ import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisData;
+import com.hmdp.utils.SystemConstants;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.geo.*;
+import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.domain.geo.GeoReference;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -74,6 +83,49 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             return Result.fail("没有查询到店铺");
         }
         return Result.ok(shop);
+    }
+
+    @Override
+    public Result queryShopByType(Integer typeId, Integer current,Double x,Double y) {
+        if(x==null && y==null){
+            Page<Shop> page = query()
+                    .eq("type_id", typeId)
+                    .page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
+            return Result.ok(page.getRecords());
+        }
+        if(x==null || y==null){
+            return Result.fail("其中一个坐标为空");
+        }
+        int start = (current - 1) * SystemConstants.DEFAULT_PAGE_SIZE;
+        int end=current*SystemConstants.DEFAULT_PAGE_SIZE;
+        //根据typeId 去redis查询，得到shopIdList和距离 geosearch FROMLONLAT x y BYRADIUS 5000 M [WITHDIST]
+        String key="shop:geo:"+typeId;
+        GeoResults<RedisGeoCommands.GeoLocation<String>> results = stringRedisTemplate.opsForGeo().search(key, GeoReference.fromCoordinate(new Point(x, y)), new Distance(5000), RedisGeoCommands.GeoSearchCommandArgs.newGeoSearchArgs().includeDistance().limit(end));
+        if(results==null){
+            return Result.ok(List.of());
+        }
+        List<GeoResult<RedisGeoCommands.GeoLocation<String>>> resultList = results.getContent().stream().skip(start).toList();
+        //根据shopIdList 查询shopList，并且为shopList赋距离的值
+        List<Long> shopIdList=new ArrayList<>();
+        Map<Long,Double> shopDistanceList=new HashMap<>();
+        for (GeoResult<RedisGeoCommands.GeoLocation<String>> geoResult : resultList) {
+            RedisGeoCommands.GeoLocation<String> content = geoResult.getContent();
+            Distance distance = geoResult.getDistance();
+
+            Long l = Long.valueOf(content.getName());
+            shopIdList.add(l);
+            shopDistanceList.put(l,distance.getValue());
+        }
+        List<Shop> shops = listByIds(shopIdList);
+        for (Shop shop : shops) {
+            shop.setDistance(shopDistanceList.get(shop.getId()));
+        }
+        // 返回数据
+        return Result.ok(shops);
+
+
+
+
     }
 
 

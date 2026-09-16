@@ -1,12 +1,17 @@
 package com.hmdp;
 
+import com.hmdp.entity.Shop;
+import com.hmdp.service.IShopService;
 import com.hmdp.service.impl.ShopServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.geo.Point;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -18,6 +23,8 @@ class HmDianPingApplicationTests {
     private ShopServiceImpl shopService;
     @Autowired
     private RedisIdWorker redisIdWorker;
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
 
     private ExecutorService es=Executors.newFixedThreadPool(500);
 
@@ -60,6 +67,21 @@ class HmDianPingApplicationTests {
     public void webTest(){
         long id = redisIdWorker.nextId("orders");
         System.out.println(Long.toBinaryString(id));
+    }
+
+    @Test
+    public void addShopGeo(){
+        //查询商户
+        List<Shop> shopList = shopService.list();
+        //对于每个商户
+        for (Shop shop : shopList) {
+            //获得商户类型id，为key
+            String key="shop:geo:"+shop.getTypeId();
+            //向key中加入坐标
+//            stringRedisTemplate.opsForGeo().add(key,,shop.getId().toString());
+            stringRedisTemplate.opsForGeo().add(key, new Point(shop.getX(),shop.getY()),shop.getId().toString());
+        }
+
     }
 
 }
