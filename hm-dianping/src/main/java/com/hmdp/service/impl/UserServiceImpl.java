@@ -12,14 +12,19 @@ import com.hmdp.service.IUserService;
 import com.hmdp.utils.PasswordEncoder;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RegexUtils;
+import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.servlet.http.HttpSession;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -109,5 +114,55 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         stringRedisTemplate.expire(token,RedisConstants.LOGIN_USER_TTL,TimeUnit.SECONDS);
 
         return Result.ok(token);
+    }
+
+    @Override
+    public Result sign() {
+        //获取用户Id
+        UserDTO user = UserHolder.getUser();
+        Long userId = user.getId();
+        //获取日期
+        LocalDate now = LocalDate.now();
+        //得到key
+        String sufix = now.format(DateTimeFormatter.ofPattern(":yyMM"));
+        String key="user:sign:"+userId+sufix;
+        //加入BitMap
+        Boolean isSuccess = stringRedisTemplate.opsForValue().setBit(key, now.getDayOfMonth() - 1, true);
+        return Result.ok();
+
+    }
+
+    @Override
+    public Result signCount() {
+        //获取用户Id
+        UserDTO user = UserHolder.getUser();
+        Long userId = user.getId();
+        //获取日期
+        LocalDate now = LocalDate.now();
+        //得到key
+        String sufix = now.format(DateTimeFormatter.ofPattern(":yyMM"));
+        String key="user:sign:"+userId+sufix;
+        int dayOfMonth = now.getDayOfMonth();
+       // bitfield user:sign:2:2609 get u16 0
+        List<Long> list = stringRedisTemplate.opsForValue().bitField(key, BitFieldSubCommands.create().get(BitFieldSubCommands.BitFieldType.unsigned(dayOfMonth)).valueAt(0));
+        if(list==null){
+            return Result.ok(0);
+        }
+        Long l = list.get(0);
+        if(l==null || l==0){
+            return Result.ok(0);
+        }
+        int ll = l.intValue();
+        int count=0;
+        while (true){
+            if((ll & 1)==1){
+                count++;
+            }else {
+                break;
+            }
+            ll=ll>>>1;
+        }
+
+        return Result.ok(count);
     }
 }
