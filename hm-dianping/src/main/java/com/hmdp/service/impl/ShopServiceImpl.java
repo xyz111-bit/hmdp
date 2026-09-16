@@ -116,7 +116,9 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             shopIdList.add(l);
             shopDistanceList.put(l,distance.getValue());
         }
-        List<Shop> shops = listByIds(shopIdList);
+        //List<Shop> shops = listByIds(shopIdList);
+        String str = StrUtil.join(",", shopIdList);
+        List<Shop> shops = query().in("id", shopIdList).last("order by field(id," + str + ")").list();
         for (Shop shop : shops) {
             shop.setDistance(shopDistanceList.get(shop.getId()));
         }
