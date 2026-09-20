@@ -13,6 +13,7 @@ public class IntecepterConfig implements WebMvcConfigurer {
     private StringRedisTemplate stringRedisTemplate;
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        //测试
         registry.addInterceptor(new LoginIntercepter(stringRedisTemplate))
                 .excludePathPatterns("/user/code","/user/login"
                 ,"/voucher/**","/shop-type/**",
