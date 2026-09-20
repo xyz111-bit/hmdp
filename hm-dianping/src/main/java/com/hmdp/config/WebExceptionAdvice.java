@@ -12,6 +12,7 @@ public class WebExceptionAdvice {
     @ExceptionHandler(RuntimeException.class)
     public Result handleRuntimeException(RuntimeException e) {
         log.error(e.toString(), e);
+        //测试
         return Result.fail("服务器异常");
     }
 }
